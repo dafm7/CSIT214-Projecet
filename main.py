@@ -8,7 +8,8 @@ Main features:
 - User Registration
 - Booking Flights
 - Managing Booked Flights
-- Purchase services
+- Purchase services (meals, drinks, WiFi, etc.)
+- Seat selection
 """
 
 # Flight class to hold flight information
@@ -79,19 +80,61 @@ class User:
             with open("user.json", "r") as f:
                 User.userList = json.load(f)
 
-# BookedFlight class to hold flight booking information
+# BookedFlight class to hold flight booking information, seat, and services
 class BookedFlight:
-    def __init__(self, flight):
+    def __init__(self, flight, seat=None, services=None):
         self.flight = flight
+        self.seat = seat
+        self.services = services if services else []
 
     def __str__(self):
-        return f"Booked {self.flight}"
+        services_str = ", ".join(self.services) if self.services else "No services ordered"
+        return f"Booked {self.flight}, Seat: {self.seat}, Services: {services_str}"
 
 def generate_flight_number(destination):
     #Generates a random flight number based on the destination.
     prefix = destination[:3].upper()  # First three letters of the destination
     suffix = random.randint(100, 999)  # Random number between 100 and 999
     return f"{prefix}{suffix}"
+
+def select_seat():
+    """
+    Allow the user to select a seat from available options.
+    """
+    rows = 10
+    cols = 6
+    print("\nAvailable Seats:")
+    for row in range(1, rows + 1):
+        seats = [f"{row}{chr(ord('A') + col)}" for col in range(cols)]
+        print(" ".join(seats))
+    seat = input("Select your seat (e.g., 5C): ")
+    return seat
+
+def order_services():
+    """
+    Allow the user to order extra flight services.
+    """
+    services_menu = {
+        "1": "Meal",
+        "2": "Drink",
+        "3": "Extra Baggage",
+        "4": "WiFi"
+    }
+    print("\nIn-flight Services Menu:")
+    for key, service in services_menu.items():
+        print(f"{key}) {service}")
+
+    selected_services = []
+    while True:
+        choice = input("Select a service (or press Enter to finish): ")
+        if choice in services_menu:
+            selected_services.append(services_menu[choice])
+            print(f"{services_menu[choice]} added to your order.")
+        elif choice == "":
+            break
+        else:
+            print("Invalid choice. Try again.")
+    return selected_services
 
 def manage_booked_flights(current_user):
     if not current_user.booked_flights:
@@ -132,11 +175,13 @@ def manage_booked_flights(current_user):
                 flight_str = current_user.booked_flights[selected_idx]
                 # Basic parsing (since we stored as string)
                 try:
-                    parts = flight_str.replace('Flight Number: ', '').replace('Date: ', '').replace('From: ', '').replace('To: ', '').split(',')
+                    parts = flight_str.replace('Booked ', '').replace('Flight Number: ', '').replace('Date: ', '').replace('From: ', '').replace('To: ', '').replace('Seat: ', '').replace('Services: ', '').split(',')
                     num = parts[0].strip()
                     date = parts[1].strip()
                     fly_from = parts[2].strip()
                     fly_to = parts[3].strip()
+                    seat = parts[4].strip() if len(parts) > 4 else ""
+                    services = parts[5].strip() if len(parts) > 5 else ""
                 except Exception:
                     print("Could not parse flight details. Cannot edit.")
                     input("\nPress Enter to continue")
@@ -145,14 +190,22 @@ def manage_booked_flights(current_user):
                 new_date = input(f"New date [{date}]: ").strip() or date
                 new_fly_from = input(f"New departure location [{fly_from}]: ").strip() or fly_from
                 new_fly_to = input(f"New destination [{fly_to}]: ").strip() or fly_to
-                # Optionally, allow changing the flight number (usually we keep it, or regenerate if destination changes)
                 if new_fly_to != fly_to:
                     new_num = generate_flight_number(new_fly_to)
                 else:
                     new_num = num
-
-                # Build new Flight string and update
-                new_flight = Flight(new_num, date=new_date, fly_from=new_fly_from, fly_to=new_fly_to)
+                new_seat = input(f"New seat [{seat}]: ").strip() or seat
+                print(f"Current services: {services}")
+                edit_services = input("Edit services? (y/n): ").strip().lower()
+                if edit_services == "y":
+                    new_services = order_services()
+                else:
+                    new_services = services.split(", ") if services and services != "No services ordered" else []
+                new_flight = BookedFlight(
+                    Flight(new_num, date=new_date, fly_from=new_fly_from, fly_to=new_fly_to),
+                    seat=new_seat,
+                    services=new_services
+                )
                 current_user.booked_flights[selected_idx] = str(new_flight)
                 User.userList[current_user.username]["booked_flights"] = current_user.booked_flights
                 print("Flight updated.")
@@ -180,7 +233,7 @@ def main():
         print("3) Book a Flight (Must be logged in)")
         print("4) View Booked Flights (Must be logged in)")
         print("5) Logout")
-        print("6) Manage Booked Flights (Must be logged in)")  # <--- new menu option
+        print("6) Manage Booked Flights (Must be logged in)")
         print("x) Exit and Save")
 
         choice = input("Enter your choice: ").lower()
@@ -198,17 +251,12 @@ def main():
                 fly_from = input("Enter the departure location (From): ")
                 fly_to = input("Enter the destination location (To): ")
                 date = input("Enter the date of travel (DD/MM/YYYY): ")
-                
-                # Generate a random flight number based on the destination
                 flight_num = generate_flight_number(fly_to)
-                
-                # Create a new Flight object with all details
                 flight = Flight(flight_num, date=date, fly_from=fly_from, fly_to=fly_to)
-                # Book the flight 
-                # Append the flight to the user's booked flights
-                # and update the user list
-                # in the userList dictionary
-                current_user.booked_flights.append(str(flight))
+                seat = select_seat()
+                services = order_services()
+                booked_flight = BookedFlight(flight, seat, services)
+                current_user.booked_flights.append(str(booked_flight))
                 User.userList[current_user.username]["booked_flights"] = current_user.booked_flights
                 print(f"Flight {flight} booked successfully!")
             else:
@@ -232,7 +280,7 @@ def main():
                 print("You are not logged in.")
             input("\nPress Enter to continue")
 
-        elif choice == "6":  # <--- handle new menu option
+        elif choice == "6":
             if current_user:
                 manage_booked_flights(current_user)
             else:
